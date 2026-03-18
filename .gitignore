@@ -1,0 +1,11 @@
+usefulsteps.txt
+*.log
+*.tmp
+*.env.local
+*.env.local.example
+node_modules/
+dist/
+.next/
+.env
+.DS_Store
+.env.local.*.backup

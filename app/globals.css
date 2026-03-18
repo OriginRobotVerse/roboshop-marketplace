@@ -1,0 +1,147 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@import url("https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;600;700&display=swap");
+
+:root {
+  --amber:         #f5a623;
+  --amber-dim:     rgba(245, 166, 35, 0.12);
+  --amber-glow:    rgba(245, 166, 35, 0.25);
+  --bg:            #111111;
+  --bg-card:       #1a1a1a;
+  --bg-elevated:   #222222;
+  --border:        rgba(255, 255, 255, 0.07);
+  --border-bright: rgba(245, 166, 35, 0.35);
+  --text:          #ffffff;
+  --text-muted:    #555555;
+  --text-dim:      #999999;
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  background-color: var(--bg);
+  color: var(--text);
+  font-family: "JetBrains Mono", "Fira Code", monospace;
+  min-height: 100vh;
+}
+
+/* Scrollbar */
+::-webkit-scrollbar { width: 4px; }
+::-webkit-scrollbar-track { background: var(--bg); }
+::-webkit-scrollbar-thumb { background: rgba(245,166,35,0.3); border-radius: 2px; }
+
+/* Selection */
+::selection { background: rgba(245,166,35,0.2); color: var(--amber); }
+
+/* Card base */
+.card {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 2px;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.card:hover {
+  border-color: rgba(255,255,255,0.14);
+  box-shadow: 0 0 20px rgba(0,0,0,0.4);
+}
+
+/* Amber button */
+.btn-amber {
+  background: var(--amber);
+  color: #000;
+  font-family: "JetBrains Mono", monospace;
+  font-weight: 700;
+  font-size: 0.72rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  border: none;
+  border-radius: 2px;
+  padding: 0.5rem 1rem;
+  cursor: pointer;
+  transition: opacity 0.15s ease;
+}
+
+.btn-amber:hover {
+  opacity: 0.88;
+}
+
+/* Ghost button — amber outline (matches landing page CTA) */
+.btn-ghost {
+  background: transparent;
+  color: var(--amber);
+  font-family: "JetBrains Mono", monospace;
+  font-weight: 600;
+  font-size: 0.72rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  border: 1px solid var(--amber);
+  border-radius: 2px;
+  padding: 0.5rem 1rem;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+
+.btn-ghost:hover {
+  background: rgba(245,166,35,0.08);
+}
+
+/* Tag / badge */
+.tag {
+  font-family: "JetBrains Mono", monospace;
+  font-size: 0.62rem;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  padding: 0.18rem 0.45rem;
+  border-radius: 2px;
+}
+
+.tag-amber {
+  background: rgba(245,166,35,0.1);
+  color: var(--amber);
+  border: 1px solid rgba(245,166,35,0.25);
+}
+
+.tag-blue {
+  background: rgba(0,170,255,0.08);
+  color: #6ab0d4;
+  border: 1px solid rgba(0,170,255,0.15);
+}
+
+.tag-red {
+  background: rgba(255,68,68,0.08);
+  color: #cc6666;
+  border: 1px solid rgba(255,68,68,0.15);
+}
+
+.tag-teal {
+  background: rgba(0,200,160,0.08);
+  color: #5bbfaa;
+  border: 1px solid rgba(0,200,160,0.15);
+}
+
+/* Divider */
+.divider {
+  height: 1px;
+  background: var(--border);
+}
+
+/* Status dot */
+.dot-amber {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--amber);
+  display: inline-block;
+}
