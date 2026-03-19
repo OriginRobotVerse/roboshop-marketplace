@@ -7,7 +7,6 @@ import {
   formatUnits,
   type Hash,
 } from 'viem';
-import { sendCalls, waitForCallsStatus } from 'viem/actions';
 import { baseSepolia } from 'viem/chains';
 import { ESCROW_ABI, ESCROW_ADDRESS } from './escrow-abi';
 import { getProvider } from './sdk';
@@ -92,34 +91,27 @@ export async function postBounty(
       return;
     }
 
-    // Batch USDC approve + postBounty into one popup (EIP-5792).
-    // forceAtomic ensures approve is rolled back if postBounty fails.
-    onState({ status: 'posting' });
-    const { id } = await sendCalls(wc, {
-      forceAtomic: true,
-      calls: [
-        {
-          to:           USDC_ADDRESS,
-          abi:          USDC_ABI,
-          functionName: 'approve',
-          args:         [ESCROW_ADDRESS, amount],
-        },
-        {
-          to:           ESCROW_ADDRESS,
-          abi:          ESCROW_ABI,
-          functionName: 'postBounty',
-          args:         [amount, metadataUri, timeout],
-        },
-      ],
+    // Step 1: approve USDC spend
+    onState({ status: 'approving' });
+    const approveTx = await wc.writeContract({
+      address:      USDC_ADDRESS,
+      abi:          USDC_ABI,
+      functionName: 'approve',
+      args:         [ESCROW_ADDRESS, amount],
     });
+    await pc.waitForTransactionReceipt({ hash: approveTx });
 
-    const { receipts, status } = await waitForCallsStatus(wc, { id, throwOnFailure: true });
-    if (status === 'failure' || !receipts?.length) {
-      throw new Error('Batch transaction failed');
-    }
+    // Step 2: post the bounty
+    onState({ status: 'posting' });
+    const bountyTx = await wc.writeContract({
+      address:      ESCROW_ADDRESS,
+      abi:          ESCROW_ABI,
+      functionName: 'postBounty',
+      args:         [amount, metadataUri, timeout],
+    });
+    await pc.waitForTransactionReceipt({ hash: bountyTx });
 
-    const txHash = receipts[receipts.length - 1].transactionHash as Hash;
-    onState({ status: 'success', txHash });
+    onState({ status: 'success', txHash: bountyTx });
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : 'Transaction failed.';
     onState({ status: 'error', message });

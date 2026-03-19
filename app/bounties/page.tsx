@@ -232,10 +232,11 @@ export default function BountiesPage() {
             <button
               className="btn-ghost"
               style={{ width: "100%", opacity: postTx.status === 'posting' ? 0.6 : 1 }}
-              disabled={postTx.status === 'posting'}
+              disabled={postTx.status === 'approving' || postTx.status === 'posting'}
               onClick={handlePostBounty}
             >
-              {postTx.status === 'posting' ? 'Confirm in Wallet…'
+              {postTx.status === 'approving' ? 'Approving USDC… (1/2)'
+                : postTx.status === 'posting' ? 'Posting Bounty… (2/2)'
                 : postTx.status === 'success' ? 'Bounty Posted ✓'
                 : address ? 'Lock Funds & Post Bounty'
                 : 'Connect to Post'}
