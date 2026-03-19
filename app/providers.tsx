@@ -5,9 +5,12 @@ import { baseSepolia } from "viem/chains";
 import { WalletProvider } from "@/lib/wallet-context";
 
 export function Providers({ children }: { children: React.ReactNode }) {
+  const appId = process.env.NEXT_PUBLIC_PRIVY_APP_ID;
+  if (!appId) return <>{children}</>;
+
   return (
     <PrivyProvider
-      appId={process.env.NEXT_PUBLIC_PRIVY_APP_ID!}
+      appId={appId}
       config={{
         loginMethods: ["email", "google", "twitter", "wallet"],
         appearance: {
