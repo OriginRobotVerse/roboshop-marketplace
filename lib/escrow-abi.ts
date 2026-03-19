@@ -5,9 +5,9 @@ export const ESCROW_ABI = [
     "type": "function",
     "name": "postBounty",
     "inputs": [
-      { "name": "amount",      "type": "uint256" },
-      { "name": "metadataUri", "type": "string"  },
-      { "name": "timeout",     "type": "uint256" }
+      { "name": "amount",          "type": "uint256" },
+      { "name": "timeoutDuration", "type": "uint256" },
+      { "name": "metadataUri",     "type": "string"  }
     ],
     "outputs": [{ "name": "bountyId", "type": "uint256" }],
     "stateMutability": "nonpayable"

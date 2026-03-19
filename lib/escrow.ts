@@ -107,7 +107,7 @@ export async function postBounty(
       address:      ESCROW_ADDRESS,
       abi:          ESCROW_ABI,
       functionName: 'postBounty',
-      args:         [amount, metadataUri, timeout],
+      args:         [amount, timeout, metadataUri],
     });
     await pc.waitForTransactionReceipt({ hash: bountyTx });
 

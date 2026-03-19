@@ -36,6 +36,10 @@ export default function BountiesPage() {
     const amount = parseFloat(postForm.amount);
     const days   = parseInt(postForm.days);
     if (!postForm.title || !amount || !days) return;
+    if (days < 7) {
+      setPostTx({ status: 'error', message: 'Minimum duration is 7 days (contract enforced).' });
+      return;
+    }
 
     const metadataUri = `data:application/json,${encodeURIComponent(JSON.stringify({
       title: postForm.title,
@@ -218,7 +222,7 @@ export default function BountiesPage() {
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "1rem" }}>
             <ModalField label="Amount (USDC)" placeholder="e.g. 2500"
               value={postForm.amount} onChange={(v) => setPostForm(f => ({ ...f, amount: v }))} />
-            <ModalField label="Duration (days)" placeholder="e.g. 14"
+            <ModalField label="Duration (days, min 7)" placeholder="e.g. 14"
               value={postForm.days} onChange={(v) => setPostForm(f => ({ ...f, days: v }))} />
           </div>
           <div style={{ marginTop: "0.5rem" }}>
