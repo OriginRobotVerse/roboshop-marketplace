@@ -16,12 +16,14 @@ export interface Skill {
   longDescription: string;
   price: number;
   dev: string;
+  devAddress?: string;
   rating: number;
   reviews: number;
   downloads: number;
   version: string;
   compatibleDevices: string[];
   tags: string[];
+  appstoreUrl?: string;
 }
 
 export interface Bounty {

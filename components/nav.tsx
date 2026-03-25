@@ -39,12 +39,18 @@ export default function Nav() {
         {/* Logo */}
         <Link href="/" style={{ textDecoration: "none" }}>
           <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
-            <span style={{ color: "#f5a623", fontSize: "1.1rem", fontWeight: 700, lineHeight: 1 }}>+</span>
+            <svg width="20" height="20" viewBox="0 0 128 128" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <path d="M64 8V50" stroke="#F59E0B" strokeWidth="1.5"/>
+              <path d="M64 78V120" stroke="#F59E0B" strokeWidth="1.5"/>
+              <path d="M8 64H50" stroke="#F59E0B" strokeWidth="1.5"/>
+              <path d="M78 64H120" stroke="#F59E0B" strokeWidth="1.5"/>
+              <path d="M72 56H56V72H72V56Z" fill="#F59E0B"/>
+            </svg>
             <span style={{ color: "#ffffff", fontWeight: 500, fontSize: "0.88rem", letterSpacing: "0.05em" }}>
               origin
             </span>
             <span style={{ color: "rgba(255,255,255,0.25)", fontSize: "0.65rem", letterSpacing: "0.08em", marginTop: 1 }}>
-              / skills
+              / apps
             </span>
           </div>
         </Link>

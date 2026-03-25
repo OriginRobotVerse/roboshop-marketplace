@@ -5,6 +5,7 @@ import {
   http,
   parseUnits,
   formatUnits,
+  decodeEventLog,
   type Hash,
 } from 'viem';
 import { baseSepolia } from 'viem/chains';
@@ -54,7 +55,8 @@ export type BountyTxState =
   | { status: 'approving' }
   | { status: 'posting' }
   | { status: 'submitting' }
-  | { status: 'success'; txHash: Hash }
+  | { status: 'approving-submission' }
+  | { status: 'success'; txHash: Hash; onChainId?: string }
   | { status: 'error'; message: string };
 
 export async function postBounty(
@@ -77,7 +79,6 @@ export async function postBounty(
     const amount = parseUnits(amountUsdc.toString(), 6);
     const timeout = BigInt(timeoutDays * 24 * 60 * 60);
 
-    // Check USDC balance before attempting
     const balance = await pc.readContract({
       address: USDC_ADDRESS,
       abi: USDC_ABI,
@@ -91,7 +92,6 @@ export async function postBounty(
       return;
     }
 
-    // Step 1: approve USDC spend
     onState({ status: 'approving' });
     const approveTx = await wc.writeContract({
       address:      USDC_ADDRESS,
@@ -101,7 +101,6 @@ export async function postBounty(
     });
     await pc.waitForTransactionReceipt({ hash: approveTx });
 
-    // Step 2: post the bounty
     onState({ status: 'posting' });
     const bountyTx = await wc.writeContract({
       address:      ESCROW_ADDRESS,
@@ -109,9 +108,21 @@ export async function postBounty(
       functionName: 'postBounty',
       args:         [amount, timeout, metadataUri],
     });
-    await pc.waitForTransactionReceipt({ hash: bountyTx });
+    const receipt = await pc.waitForTransactionReceipt({ hash: bountyTx });
 
-    onState({ status: 'success', txHash: bountyTx });
+    // Extract bountyId from BountyPosted event
+    let onChainId: string | undefined;
+    for (const log of receipt.logs) {
+      try {
+        const decoded = decodeEventLog({ abi: ESCROW_ABI, ...log });
+        if (decoded.eventName === 'BountyPosted') {
+          onChainId = String((decoded.args as { bountyId: bigint }).bountyId);
+          break;
+        }
+      } catch { /* not this event */ }
+    }
+
+    onState({ status: 'success', txHash: bountyTx, onChainId });
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : 'Transaction failed.';
     onState({ status: 'error', message });
@@ -140,6 +151,50 @@ export async function submitSkill(
       abi: ESCROW_ABI,
       functionName: 'submit',
       args: [bountyId, skillUri],
+    });
+    const receipt = await pc.waitForTransactionReceipt({ hash: tx });
+
+    // Extract submissionId from SubmissionMade event
+    let onChainId: string | undefined;
+    for (const log of receipt.logs) {
+      try {
+        const decoded = decodeEventLog({ abi: ESCROW_ABI, ...log });
+        if (decoded.eventName === 'SubmissionMade') {
+          onChainId = String((decoded.args as { submissionId: bigint }).submissionId);
+          break;
+        }
+      } catch { /* not this event */ }
+    }
+
+    onState({ status: 'success', txHash: tx, onChainId });
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : 'Transaction failed.';
+    onState({ status: 'error', message });
+  }
+}
+
+export async function approveBounty(
+  {
+    address,
+    onChainBountyId,
+    onChainSubmissionId,
+  }: {
+    address:             `0x${string}`;
+    onChainBountyId:     bigint;
+    onChainSubmissionId: bigint;
+  },
+  onState: (s: BountyTxState) => void,
+) {
+  try {
+    const wc = walletClient(address);
+    const pc = publicClient();
+
+    onState({ status: 'approving-submission' });
+    const tx = await wc.writeContract({
+      address: ESCROW_ADDRESS,
+      abi: ESCROW_ABI,
+      functionName: 'approve',
+      args: [onChainBountyId, onChainSubmissionId],
     });
     await pc.waitForTransactionReceipt({ hash: tx });
 

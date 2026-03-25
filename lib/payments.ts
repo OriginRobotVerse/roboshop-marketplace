@@ -70,7 +70,7 @@ export async function purchaseSkillWithWallet(
       body: JSON.stringify({ txHash, skillId: skill.id, buyer: address }),
     });
 
-    const data = await res.json() as { success?: boolean; error?: string };
+    const data = await res.json() as { success?: boolean; error?: string; redirectUrl?: string };
 
     if (!res.ok || !data.success) {
       onStateChange({ status: 'error', message: data.error ?? 'Verification failed.' });
@@ -78,6 +78,9 @@ export async function purchaseSkillWithWallet(
     }
 
     onStateChange({ status: 'success', txId: txHash });
+    if (data.redirectUrl) {
+      window.location.href = data.redirectUrl;
+    }
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : 'Payment cancelled.';
     onStateChange({ status: 'error', message });
@@ -112,7 +115,7 @@ export async function purchaseSkill(
       body: JSON.stringify({ paymentId: result.id, skillId: skill.id }),
     });
 
-    const data = await res.json() as { success?: boolean; error?: string };
+    const data = await res.json() as { success?: boolean; error?: string; redirectUrl?: string };
 
     if (!res.ok || !data.success) {
       onStateChange({ status: 'error', message: data.error ?? 'Verification failed.' });
@@ -120,6 +123,9 @@ export async function purchaseSkill(
     }
 
     onStateChange({ status: 'success', txId: result.id });
+    if (data.redirectUrl) {
+      window.location.href = data.redirectUrl;
+    }
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : 'Payment cancelled.';
     onStateChange({ status: 'error', message });

@@ -1,35 +1,82 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import BountyCard from "@/components/bounty-card";
-import { BOUNTIES, PLATFORM_STATS } from "@/lib/mock-data";
-import type { Bounty, BountyStatus } from "@/lib/types";
+import type { Bounty, BountyStatus, SkillCategory } from "@/lib/types";
 import { useWallet } from "@/lib/wallet-context";
 import { postBounty, submitSkill, type BountyTxState } from "@/lib/escrow";
 
 type Filter = BountyStatus | "ALL";
 
 const FILTERS: { label: string; value: Filter }[] = [
-  { label: "All",        value: "ALL"       },
-  { label: "Open",       value: "OPEN"      },
-  { label: "In Review",  value: "IN_REVIEW" },
-  { label: "Completed",  value: "COMPLETED" },
+  { label: "All",       value: "ALL"       },
+  { label: "Open",      value: "OPEN"      },
+  { label: "In Review", value: "IN_REVIEW" },
+  { label: "Completed", value: "COMPLETED" },
 ];
 
+interface DbBounty {
+  id: string;
+  onChainId: string | null;
+  title: string;
+  description: string;
+  amount: string;
+  manufacturerAddress: string;
+  manufacturerName: string;
+  status: BountyStatus;
+  timeoutDays: number;
+  requiredCategory: SkillCategory | null;
+  txHash: string | null;
+  createdAt: string;
+}
+
+function dbBountyToUi(b: DbBounty): Bounty {
+  const created = new Date(b.createdAt);
+  const deadline = new Date(created.getTime() + b.timeoutDays * 24 * 60 * 60 * 1000);
+  const daysLeft = Math.max(0, Math.ceil((deadline.getTime() - Date.now()) / (1000 * 60 * 60 * 24)));
+  return {
+    id: b.id,
+    title: b.title,
+    description: b.description,
+    amount: parseFloat(b.amount),
+    manufacturer: b.manufacturerName || b.manufacturerAddress.slice(0, 10) + '…',
+    status: b.status,
+    daysLeft: b.status === 'COMPLETED' ? null : daysLeft,
+    submissions: 0,
+    requiredCategory: b.requiredCategory ?? 'NAVIGATION',
+    postedAt: b.createdAt,
+  };
+}
+
 export default function BountiesPage() {
-  const [filter, setFilter] = useState<Filter>("ALL");
-  const [showPostModal, setShowPostModal] = useState(false);
+  const [filter, setFilter]             = useState<Filter>("ALL");
+  const [bounties, setBounties]         = useState<Bounty[]>([]);
+  const [dbBounties, setDbBounties]     = useState<DbBounty[]>([]);
+  const [loading, setLoading]           = useState(true);
+  const [showPostModal, setShowPostModal]     = useState(false);
   const [showSubmitModal, setShowSubmitModal] = useState(false);
-  const [selectedBounty, setSelectedBounty] = useState<Bounty | null>(null);
+  const [selectedBounty, setSelectedBounty]   = useState<Bounty | null>(null);
   const { address, connect } = useWallet();
 
-  // Post bounty form state
   const [postForm, setPostForm] = useState({ title: '', description: '', amount: '', days: '14' });
-  const [postTx, setPostTx] = useState<BountyTxState>({ status: 'idle' });
+  const [postTx, setPostTx]     = useState<BountyTxState>({ status: 'idle' });
 
-  // Submit skill form state
   const [submitForm, setSubmitForm] = useState({ skillUri: '', notes: '' });
-  const [submitTx, setSubmitTx] = useState<BountyTxState>({ status: 'idle' });
+  const [submitTx, setSubmitTx]     = useState<BountyTxState>({ status: 'idle' });
+
+  async function loadBounties() {
+    setLoading(true);
+    try {
+      const res = await fetch('/api/bounties');
+      const data: DbBounty[] = await res.json();
+      setDbBounties(data);
+      setBounties(data.map(dbBountyToUi));
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  useEffect(() => { loadBounties(); }, []);
 
   const handlePostBounty = async () => {
     if (!address) { connect(); return; }
@@ -48,10 +95,28 @@ export default function BountiesPage() {
 
     await postBounty(
       { address: address as `0x${string}`, amountUsdc: amount, metadataUri, timeoutDays: days },
-      (s) => {
+      async (s) => {
         setPostTx(s);
         if (s.status === 'success') {
-          setTimeout(() => { setShowPostModal(false); setPostTx({ status: 'idle' }); }, 2000);
+          // Save to DB after on-chain success
+          await fetch('/api/bounties', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              title: postForm.title,
+              description: postForm.description,
+              amount,
+              manufacturerAddress: address,
+              timeoutDays: days,
+              txHash: s.txHash,
+            }),
+          });
+          await loadBounties();
+          setTimeout(() => {
+            setShowPostModal(false);
+            setPostTx({ status: 'idle' });
+            setPostForm({ title: '', description: '', amount: '', days: '14' });
+          }, 2000);
         }
       },
     );
@@ -61,66 +126,55 @@ export default function BountiesPage() {
     if (!address) { connect(); return; }
     if (!selectedBounty || !submitForm.skillUri) return;
 
+    const dbBounty = dbBounties.find((b) => b.id === selectedBounty.id);
+    const onChainId = dbBounty?.onChainId ? BigInt(dbBounty.onChainId) : BigInt(selectedBounty.id);
+
     await submitSkill(
-      { address: address as `0x${string}`, bountyId: BigInt(selectedBounty.id), skillUri: submitForm.skillUri },
-      (s) => {
+      { address: address as `0x${string}`, bountyId: onChainId, skillUri: submitForm.skillUri },
+      async (s) => {
         setSubmitTx(s);
         if (s.status === 'success') {
-          setTimeout(() => { setShowSubmitModal(false); setSubmitTx({ status: 'idle' }); }, 2000);
+          // Save submission to DB
+          await fetch(`/api/bounties/${selectedBounty.id}/submissions`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              devAddress: address,
+              skillUri: submitForm.skillUri,
+              notes: submitForm.notes,
+              txHash: s.txHash,
+            }),
+          });
+          await loadBounties();
+          setTimeout(() => {
+            setShowSubmitModal(false);
+            setSubmitTx({ status: 'idle' });
+            setSubmitForm({ skillUri: '', notes: '' });
+          }, 2000);
         }
       },
     );
   };
 
-  const visible = filter === "ALL"
-    ? BOUNTIES
-    : BOUNTIES.filter((b) => b.status === filter);
+  const openBounties   = bounties.filter((b) => b.status === 'OPEN');
+  const totalUsdcLocked = bounties
+    .filter((b) => b.status === 'OPEN')
+    .reduce((acc, b) => acc + b.amount, 0);
+
+  const visible = filter === "ALL" ? bounties : bounties.filter((b) => b.status === filter);
 
   return (
     <div style={{ maxWidth: 1200, margin: "0 auto", padding: "2.5rem 1.5rem" }}>
       {/* Header */}
-      <div
-        style={{
-          display: "flex",
-          justifyContent: "space-between",
-          alignItems: "flex-start",
-          marginBottom: "2rem",
-          flexWrap: "wrap",
-          gap: "1rem",
-        }}
-      >
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: "2rem", flexWrap: "wrap", gap: "1rem" }}>
         <div>
-          <div
-            className="mono"
-            style={{
-              color: "rgba(245,166,35,0.5)",
-              fontSize: "0.7rem",
-              letterSpacing: "0.15em",
-              textTransform: "uppercase",
-              marginBottom: "0.5rem",
-            }}
-          >
+          <div className="mono" style={{ color: "rgba(245,166,35,0.5)", fontSize: "0.7rem", letterSpacing: "0.15em", textTransform: "uppercase", marginBottom: "0.5rem" }}>
             Origin Protocol · Bounty Board
           </div>
-          <h1
-            style={{
-              fontSize: "clamp(1.4rem, 3.5vw, 2rem)",
-              fontWeight: 700,
-              color: "var(--text)",
-            }}
-          >
-            Build skills.{" "}
-            <span style={{ color: "#f5a623" }}>Earn USDC.</span>
+          <h1 style={{ fontSize: "clamp(1.4rem, 3.5vw, 2rem)", fontWeight: 700, color: "var(--text)" }}>
+            Build skills.{" "}<span style={{ color: "#f5a623" }}>Earn USDC.</span>
           </h1>
-          <p
-            style={{
-              color: "var(--text-dim)",
-              fontSize: "0.85rem",
-              marginTop: "0.5rem",
-              maxWidth: 440,
-              lineHeight: 1.6,
-            }}
-          >
+          <p style={{ color: "var(--text-dim)", fontSize: "0.85rem", marginTop: "0.5rem", maxWidth: 440, lineHeight: 1.6 }}>
             Manufacturers post bounties for capabilities they need. Developers build and
             submit. Funds locked in escrow — released on approval.
           </p>
@@ -135,29 +189,14 @@ export default function BountiesPage() {
       </div>
 
       {/* Stats */}
-      <div
-        style={{
-          display: "grid",
-          gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))",
-          gap: "1px",
-          background: "rgba(245,166,35,0.08)",
-          border: "1px solid rgba(245,166,35,0.10)",
-          borderRadius: 4,
-          overflow: "hidden",
-          marginBottom: "2rem",
-        }}
-      >
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))", gap: "1px", background: "rgba(245,166,35,0.08)", border: "1px solid rgba(245,166,35,0.10)", borderRadius: 4, overflow: "hidden", marginBottom: "2rem" }}>
         {[
-          { label: "Open Bounties",  value: PLATFORM_STATS.openBounties                               },
-          { label: "USDC Locked",    value: `$${PLATFORM_STATS.totalBountyUsdc.toLocaleString()}`     },
-          { label: "Avg Payout",     value: `$${Math.round(PLATFORM_STATS.totalBountyUsdc / PLATFORM_STATS.openBounties).toLocaleString()}` },
-          { label: "Total Posted",   value: BOUNTIES.length                                            },
+          { label: "Open Bounties", value: openBounties.length },
+          { label: "USDC Locked",   value: `$${totalUsdcLocked.toLocaleString()}` },
+          { label: "Total Posted",  value: bounties.length },
         ].map(({ label, value }) => (
           <div key={label} style={{ background: "var(--bg-card)", padding: "1rem 1.25rem" }}>
-            <div
-              className="mono"
-              style={{ color: "var(--text-muted)", fontSize: "0.62rem", letterSpacing: "0.12em", textTransform: "uppercase", marginBottom: "0.3rem" }}
-            >
+            <div className="mono" style={{ color: "var(--text-muted)", fontSize: "0.62rem", letterSpacing: "0.12em", textTransform: "uppercase", marginBottom: "0.3rem" }}>
               {label}
             </div>
             <div className="mono" style={{ color: "#f5a623", fontSize: "1.4rem", fontWeight: 700 }}>
@@ -193,24 +232,25 @@ export default function BountiesPage() {
       </div>
 
       {/* Bounty grid */}
-      <div
-        style={{
-          display: "grid",
-          gridTemplateColumns: "repeat(auto-fill, minmax(320px, 1fr))",
-          gap: "1rem",
-        }}
-      >
-        {visible.map((bounty) => (
-          <BountyCard
-            key={bounty.id}
-            bounty={bounty}
-            onSubmit={(b) => {
-              setSelectedBounty(b);
-              setShowSubmitModal(true);
-            }}
-          />
-        ))}
-      </div>
+      {loading ? (
+        <div className="mono" style={{ color: "var(--text-muted)", fontSize: "0.8rem", textAlign: "center", padding: "3rem 0" }}>
+          Loading bounties…
+        </div>
+      ) : visible.length === 0 ? (
+        <div className="mono" style={{ color: "var(--text-muted)", fontSize: "0.8rem", textAlign: "center", padding: "3rem 0" }}>
+          No bounties found.
+        </div>
+      ) : (
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(320px, 1fr))", gap: "1rem" }}>
+          {visible.map((bounty) => (
+            <BountyCard
+              key={bounty.id}
+              bounty={bounty}
+              onSubmit={(b) => { setSelectedBounty(b); setShowSubmitModal(true); }}
+            />
+          ))}
+        </div>
+      )}
 
       {/* POST BOUNTY MODAL */}
       {showPostModal && (
@@ -228,7 +268,7 @@ export default function BountiesPage() {
           <div style={{ marginTop: "0.5rem" }}>
             <p style={{ fontSize: "0.65rem", color: "var(--text-muted)", marginBottom: "1rem", lineHeight: 1.6 }}>
               Funds locked in the Origin Escrow contract on Base until you approve a submission
-              or the deadline passes. Fee: 15% ({"<"}$1K) · 10% ({">"}=$1K).
+              or the deadline passes. Fee: 15% ({'<'}$1K) · 10% ({'>'}=$1K).
             </p>
             {postTx.status === 'error' && (
               <p style={{ fontSize: "0.68rem", color: "#cc6666", marginBottom: "0.75rem" }}>{postTx.message}</p>
@@ -251,20 +291,8 @@ export default function BountiesPage() {
 
       {/* SUBMIT SKILL MODAL */}
       {showSubmitModal && selectedBounty && (
-        <Modal
-          title={`Submit Skill · ${selectedBounty.title}`}
-          onClose={() => setShowSubmitModal(false)}
-        >
-          <div
-            className="mono"
-            style={{
-              padding: "0.75rem 1rem",
-              background: "rgba(245,166,35,0.05)",
-              border: "1px solid rgba(245,166,35,0.15)",
-              borderRadius: 3,
-              marginBottom: "1.25rem",
-            }}
-          >
+        <Modal title={`Submit Skill · ${selectedBounty.title}`} onClose={() => setShowSubmitModal(false)}>
+          <div className="mono" style={{ padding: "0.75rem 1rem", background: "rgba(245,166,35,0.05)", border: "1px solid rgba(245,166,35,0.15)", borderRadius: 3, marginBottom: "1.25rem" }}>
             <div style={{ display: "flex", justifyContent: "space-between" }}>
               <span style={{ color: "var(--text-muted)", fontSize: "0.65rem", letterSpacing: "0.08em" }}>BOUNTY</span>
               <span style={{ color: "#f5a623", fontSize: "0.9rem", fontWeight: 700 }}>
@@ -299,66 +327,19 @@ export default function BountiesPage() {
   );
 }
 
-/* ──────────────────────────────────────────────────
-   Shared modal primitives (local to this page)
-   ────────────────────────────────────────────────── */
-function Modal({
-  title,
-  children,
-  onClose,
-}: {
-  title: string;
-  children: React.ReactNode;
-  onClose: () => void;
-}) {
+function Modal({ title, children, onClose }: { title: string; children: React.ReactNode; onClose: () => void }) {
   return (
     <div
-      style={{
-        position: "fixed",
-        inset: 0,
-        background: "rgba(0,0,0,0.75)",
-        zIndex: 100,
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        padding: "1rem",
-      }}
+      style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.75)", zIndex: 100, display: "flex", alignItems: "center", justifyContent: "center", padding: "1rem" }}
       onClick={onClose}
     >
       <div
-        style={{
-          background: "var(--bg-card)",
-          border: "1px solid rgba(245,166,35,0.25)",
-          borderRadius: 4,
-          padding: "1.75rem",
-          width: "100%",
-          maxWidth: 480,
-          display: "flex",
-          flexDirection: "column",
-          gap: "1.1rem",
-          boxShadow: "0 0 40px rgba(245,166,35,0.08)",
-        }}
+        style={{ background: "var(--bg-card)", border: "1px solid rgba(245,166,35,0.25)", borderRadius: 4, padding: "1.75rem", width: "100%", maxWidth: 480, display: "flex", flexDirection: "column", gap: "1.1rem", boxShadow: "0 0 40px rgba(245,166,35,0.08)" }}
         onClick={(e) => e.stopPropagation()}
       >
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-          <h2
-            style={{ color: "var(--text)", fontSize: "0.95rem", fontWeight: 600 }}
-          >
-            {title}
-          </h2>
-          <button
-            onClick={onClose}
-            style={{
-              background: "none",
-              border: "none",
-              color: "var(--text-muted)",
-              fontSize: "1.2rem",
-              cursor: "pointer",
-              lineHeight: 1,
-            }}
-          >
-            ×
-          </button>
+          <h2 style={{ color: "var(--text)", fontSize: "0.95rem", fontWeight: 600 }}>{title}</h2>
+          <button onClick={onClose} style={{ background: "none", border: "none", color: "var(--text-muted)", fontSize: "1.2rem", cursor: "pointer", lineHeight: 1 }}>×</button>
         </div>
         <div className="divider" />
         {children}
@@ -367,19 +348,7 @@ function Modal({
   );
 }
 
-function ModalField({
-  label,
-  placeholder,
-  textarea,
-  value,
-  onChange,
-}: {
-  label: string;
-  placeholder?: string;
-  textarea?: boolean;
-  value?: string;
-  onChange?: (v: string) => void;
-}) {
+function ModalField({ label, placeholder, textarea, value, onChange }: { label: string; placeholder?: string; textarea?: boolean; value?: string; onChange?: (v: string) => void }) {
   const sharedStyle: React.CSSProperties = {
     width: "100%",
     background: "rgba(245,166,35,0.03)",
@@ -393,19 +362,13 @@ function ModalField({
     resize: "none" as const,
     marginTop: "0.4rem",
   };
-
   return (
     <div>
-      <label style={{ color: "var(--text-muted)", fontSize: "0.62rem", letterSpacing: "0.1em", textTransform: "uppercase" }}>
-        {label}
-      </label>
-      {textarea ? (
-        <textarea rows={3} placeholder={placeholder} style={sharedStyle}
-          value={value ?? ''} onChange={(e) => onChange?.(e.target.value)} />
-      ) : (
-        <input type="text" placeholder={placeholder} style={sharedStyle}
-          value={value ?? ''} onChange={(e) => onChange?.(e.target.value)} />
-      )}
+      <label style={{ color: "var(--text-muted)", fontSize: "0.62rem", letterSpacing: "0.1em", textTransform: "uppercase" }}>{label}</label>
+      {textarea
+        ? <textarea rows={3} placeholder={placeholder} style={sharedStyle} value={value ?? ''} onChange={(e) => onChange?.(e.target.value)} />
+        : <input type="text" placeholder={placeholder} style={sharedStyle} value={value ?? ''} onChange={(e) => onChange?.(e.target.value)} />
+      }
     </div>
   );
 }

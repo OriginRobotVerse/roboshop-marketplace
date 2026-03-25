@@ -9,3 +9,6 @@ dist/
 .env
 .DS_Store
 .env.local.*.backup
+/origin-assets/
+origin-assets
+
