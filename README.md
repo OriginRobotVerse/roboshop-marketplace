@@ -1,6 +1,6 @@
 # OriginEscrow
 
-Solidity escrow contract for the Origin bounty board. Built with Foundry, deployed on Base.
+Escrow contract for the Origin bounty board. Built with Foundry, deployed on Base.
 
 ## How it works
 
